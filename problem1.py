@@ -21,7 +21,8 @@ def stream(x, y, u, v, dt):
 
 #Periodic BC
 def periodic(a, a_min, a_max, La, N):
-        
+
+
         for j in range(0,N):
 
                 if a[j,0] >= a_max:
@@ -32,7 +33,7 @@ def periodic(a, a_min, a_max, La, N):
 
                 else:
                         a[j,0] = a[j,0]
-        
+        print(a)
         return a 
 
 
@@ -97,6 +98,14 @@ for i in range(0,Niter):
         #streaming Step
         x = x + u*dt
         y = y + v*dt
+
+        #Periodic BC for x
+        np.place(x, x > x_max, x-Lx)
+        np.place(x, x < x_min, x+Lx)
+
+        #Periodic BC for y
+        np.place(y, y > y_max, y-Ly)
+        np.place(y, y < y_min, y+Ly)
 
         #Assigning particles to grid cells
         in_x = np.floor((x-x_min+h2-grid_shift_x[0,i])/h)
