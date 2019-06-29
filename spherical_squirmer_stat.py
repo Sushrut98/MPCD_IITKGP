@@ -40,6 +40,13 @@ R1 = 3*h
 R2 = R1 - 1.73*h
 mass = 1
 
+res = 5
+hcf = h/res
+ncx_fp = res*ncx
+ncy_fp = res*ncy
+ncz_fp = res*ncz
+nct_profile = ncx_fp*ncy_fp*ncz_fp
+
 mu = 0
 sigma = 1
 lamda = 0.1
@@ -115,6 +122,11 @@ grid_shift_x = h*np.random.rand(Niter,1)-h2
 grid_shift_y = h*np.random.rand(Niter,1)-h2
 grid_shift_z = h*np.random.rand(Niter,1)-h2
 
+n_avg_fp = 30000
+u_cm_fp = np.zeros((nct_profile,1))
+v_cm_fp = np.zeros((nct_profile,1))
+w_cm_fp = np.zeros((nct_profile,1))
+
 #-------------------------------------------------------------------------------------------------------#
 #-------------------------------------------------------------------------------------------------------#
 #-------------------------------------------------------------------------------------------------------#
@@ -149,12 +161,12 @@ def CellIndex(pos, LowerBound, grid_shift):
     return in_a
 
 @jit
-def head_list(locations, Num):
+def head_list(locations, Num, Num_cell):
     #head, list array must be initialized for every iteration
 
-    head = -1*(np.ones((nc_total,1)))
+    head = -1*(np.ones((Num_cell,1)))
     list_particle = -2*np.ones((Num,1))
-    count = np.zeros((nc_total,1))
+    count = np.zeros((Num_cell,1))
     
     for j in range(0,Num):
         list_particle[j,0] = head[locations[j,0],0]
@@ -164,10 +176,10 @@ def head_list(locations, Num):
     return head, list_particle, count
 
 @jit
-def cm_quantity(head, list_particle, count, quant):
-    quant_cm = np.zeros((nc_total, 1))
+def cm_quantity(head, list_particle, count, quant, Num_cell):
+    quant_cm = np.zeros((Num_cell, 1))
 
-    for j in range(0,nc_total):
+    for j in range(0,Num_cell):
         k = head[j,0]
 
         while(k != -1):
@@ -176,9 +188,9 @@ def cm_quantity(head, list_particle, count, quant):
     return quant_cm
 
 @jit
-def cm_vel(veloc, count):
-    veloc_cm = np.zeros((nc_total,1))
-    for j in range(nc_total):
+def cm_vel(veloc, count, Num_cell):
+    veloc_cm = np.zeros((Num_cell,1))
+    for j in range(Num_cell):
         if count[j,0] == 0:
             continue
         else:
@@ -198,10 +210,10 @@ def anderson_thermostat(vel_cm, vel_rand, vel_si, locations, Num):
 #-------------------------------------------------------------------------------------------------------#
 #-------------------------------------------------------------------------------------------------------#
 #-------------------------------------------------------------------------------------------------------#
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
-ax.scatter(x,y,z)
-plt.show()
+# fig = plt.figure()
+# ax = fig.add_subplot(111, projection='3d')
+# ax.scatter(x,y,z)
+# plt.show()
 s_sim = time.time()
 for i in range(0,Niter):
     x = pos_stream(x,u,0,dt)
@@ -265,36 +277,30 @@ for i in range(0,Niter):
     locations_v = locations_v.astype(int)
     #print('d')
 
-    head, list_particle, count_f = head_list(locations,N) 
+    head, list_particle, count_f = head_list(locations,N,nc_total) 
     head = head.astype(int)
     list_particle = list_particle.astype(int)
     
-    x_cm_f = cm_quantity(head, list_particle, count_f, x)
-    y_cm_f = cm_quantity(head, list_particle, count_f, y)
-    z_cm_f = cm_quantity(head, list_particle, count_f, z)
-    u_cm_f = cm_quantity(head, list_particle, count_f, u)
-    v_cm_f = cm_quantity(head, list_particle, count_f, v)
-    w_cm_f = cm_quantity(head, list_particle, count_f, w)
+    u_cm_f = cm_quantity(head, list_particle, count_f, u, nc_total)
+    v_cm_f = cm_quantity(head, list_particle, count_f, v, nc_total)
+    w_cm_f = cm_quantity(head, list_particle, count_f, w, nc_total)
     
     #print('e')
-    head_v, list_particle_v, count_v = head_list(locations_v,N_v)
+    head_v, list_particle_v, count_v = head_list(locations_v,N_v,nc_total)
     head_v = head_v.astype(int)
     list_particle_v = list_particle_v.astype(int)
     
-    x_cm_v = cm_quantity(head_v, list_particle_v, count_v, x_v)
-    y_cm_v = cm_quantity(head_v, list_particle_v, count_v, y_v)
-    z_cm_v = cm_quantity(head_v, list_particle_v, count_v, z_v)
-    u_cm_v = cm_quantity(head_v, list_particle_v, count_v, u_v)
-    v_cm_v = cm_quantity(head_v, list_particle_v, count_v, v_v)
-    w_cm_v = cm_quantity(head_v, list_particle_v, count_v, w_v)
+    u_cm_v = cm_quantity(head_v, list_particle_v, count_v, u_v, nc_total)
+    v_cm_v = cm_quantity(head_v, list_particle_v, count_v, v_v, nc_total)
+    w_cm_v = cm_quantity(head_v, list_particle_v, count_v, w_v, nc_total)
     
     #print('f')
 
     count = count_v + count_f
 
-    u_cm = cm_vel((u_cm_f + u_cm_v),count)
-    v_cm = cm_vel((v_cm_f + v_cm_v),count)
-    w_cm = cm_vel((w_cm_f + w_cm_v),count)
+    u_cm = cm_vel((u_cm_f + u_cm_v),count, nc_total)
+    v_cm = cm_vel((v_cm_f + v_cm_v),count, nc_total)
+    w_cm = cm_vel((w_cm_f + w_cm_v),count, nc_total)
     
     #print('g')
     
@@ -302,21 +308,43 @@ for i in range(0,Niter):
     v_r_at = np.random.normal(mu,sigma,(N,1))
     w_r_at = np.random.normal(mu,sigma,(N,1))
 
-    u_cm_r = cm_quantity(head, list_particle, count_f, u_r_at)
-    v_cm_r = cm_quantity(head, list_particle, count_f, v_r_at)
-    w_cm_r = cm_quantity(head, list_particle, count_f, w_r_at)
+    u_cm_r = cm_quantity(head, list_particle, count_f, u_r_at, nc_total)
+    v_cm_r = cm_quantity(head, list_particle, count_f, v_r_at, nc_total)
+    w_cm_r = cm_quantity(head, list_particle, count_f, w_r_at, nc_total)
 
-    u_si =cm_vel(u_cm_r, count)
-    v_si =cm_vel(v_cm_r, count)
-    w_si =cm_vel(w_cm_r, count)
+    u_si =cm_vel(u_cm_r, count, nc_total)
+    v_si =cm_vel(v_cm_r, count, nc_total)
+    w_si =cm_vel(w_cm_r, count, nc_total)
 
     u = anderson_thermostat(u_cm, u_r_at, u_si, locations, N)
     v = anderson_thermostat(v_cm, v_r_at, v_si, locations, N)
     w = anderson_thermostat(w_cm, w_r_at, w_si, locations, N)
 
-    #if i%1000==1:
-    print("ITERATION - " + 	str(i))
+    in_x_fp = np.floor((x-x_min)/hcf)
+    in_y_fp = np.floor((y-y_min)/hcf)
+    in_z_fp = np.floor((z-z_min)/hcf)
+    locations_fp = ncx_fp*ncy_fp*in_z_fp + ncx_fp*in_y_fp + in_x_fp
+    locations_fp = locations_fp.astype(int)
     
+    head_fp, list_particle_fp, count_fp = head_list(locations, N, nct_profile)
+    head_fp = head_fp.astype(int)
+    list_particle_fp = list_particle_fp.astype(int)
+
+    u_cm_fp1 = cm_quantity(head_fp, list_particle_fp, count_fp, u, nct_profile)
+    v_cm_fp1 = cm_quantity(head_fp, list_particle_fp, count_fp, v, nct_profile)
+    w_cm_fp1 = cm_quantity(head_fp, list_particle_fp, count_fp, w, nct_profile)
+
+    if i>=n_avg_fp:
+        u_cm_fp = u_cm_fp + u_cm_fp1
+        v_cm_fp = v_cm_fp + v_cm_fp1                        
+        w_cm_fp = w_cm_fp + w_cm_fp1
+
+    if i%1000==1:
+        print("ITERATION - " + 	str(i))
+
+u_cm_fp = u_cm_fp/(Niter-n_avg_fp)
+v_cm_fp = v_cm_fp/(Niter-n_avg_fp)                       
+w_cm_fp = w_cm_fp/(Niter-n_avg_fp)
 
 e_sim = time.time()
 print(str(e_sim-s_sim))
