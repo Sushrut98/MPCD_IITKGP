@@ -9,9 +9,9 @@ from mpl_toolkits.mplot3d import Axes3D
 #-------------------------------------------------------------------------------------------------------#
 
 Niter = 50000
-ncx = 21
-ncy = 21
-ncz = 21
+ncx = 49
+ncy = 49
+ncz = 49
 nc_total = (ncx)*(ncy)*(ncz)
 
 h = 1
@@ -35,27 +35,28 @@ z_max = z_min + Lz
 
 np_avg = 10
 N = (ncx-1)*(ncy-1)*(ncz-1)*np_avg
-N_v = 333
-R1 = 3*h
+R1 = 4*h
 R2 = R1 - 1.73*h
+N_v = (4/3)*np.pi*(R1**3-R2**3)*np_avg
+N_v=int(N_v)
 mass = 1
 
-res = 5
+res = 2
 hcf = h/res
-ncx_fp = res*ncx
-ncy_fp = res*ncy
-ncz_fp = res*ncz
+ncx_fp = res*(ncx-1)
+ncy_fp = res*(ncy-1)
+ncz_fp = res*(ncz-1)
 nct_profile = ncx_fp*ncy_fp*ncz_fp
 
 mu = 0
-sigma = 1
+kBT = 36
+sigma = np.sqrt(kBT/mass)
 lamda = 0.1
-kBT = 0.1
-beta = 3
-B1 = 0.1*np.sqrt(kBT/mass)
-dt = kBT/sigma
-dt2 = dt/2
 
+beta = 0
+B1 = 0.01*np.sqrt(kBT/mass)
+dt = lamda/sigma
+dt2 = dt/2
 
 #-------------------------------------------------------------------------------------------------------#
 #-------------------------------------------------------------------------------------------------------#
@@ -65,14 +66,13 @@ dt2 = dt/2
 #-----------------------------------------|  Initialisation  |------------------------------------------#
 #-------------------------------------------------------------------------------------------------------#
 
-                         #------------| Flow Stabilization Run  |---------------#
 x = np.random.uniform(x_min,x_max,(N,1))
 y = np.random.uniform(y_min,y_max,(N,1))
-z = np.random.uniform(y_min,y_max,(N,1))
+z = np.random.uniform(z_min,z_max,(N,1))
 
 a = []
 for i in range(N):
-    if (x[i]**2 + y[i]**2 + z[i]**2) < (R1**2):
+    if (x[i,0]**2 + y[i,0]**2 + z[i,0]**2) < (R1**2):
         a.append(i)
 N = N-len(a)
 
@@ -85,8 +85,8 @@ w = np.random.normal(mu,sigma,(N,1))
 
 @jit
 def gen_vir_part_sq():
-    u = np.random.uniform(0,1,(N_v,1))
-    R = (R1**3 + (R2**3 - R1**3)*u)**(1/3)
+    au = np.random.uniform(0,1,(N_v,1))
+    R = (R1**3 + (R2**3 - R1**3)*au)**(1/3)
     eta = np.random.uniform(-1, 1, (N_v,1))
     phi = np.random.uniform(0, 2*np.pi, (N_v,1))
 
@@ -100,23 +100,18 @@ u_v = np.random.normal(mu,sigma,(N_v,1))
 v_v = np.random.normal(mu,sigma,(N_v,1))
 w_v = np.random.normal(mu,sigma,(N_v,1))
 
+x_v_rad = np.zeros((N_v,1))
+y_v_rad = np.zeros((N_v,1))
+z_v_rad = np.zeros((N_v,1))
+
 for j in range(N_v):
     mag_position_v = np.sqrt(x_v[j]**2 + y_v[j]**2 + z_v[j]**2)
-    x_v_rad = R1*x_v/mag_position_v
-    y_v_rad = R1*y_v/mag_position_v
-    z_v_rad = R1*z_v/mag_position_v
-    u_v[j,0] = -u_v[j,0] + 2*(B1*(1+beta*x_v_rad[j,0])*(x_v_rad[j,0]**2 - 1) + 0 + 0)
-    v_v[j,0] = -v_v[j,0] + 2*(B1*(1+beta*x_v_rad[j,0])*(z_v_rad[j,0]*x_v_rad[j,0]) + 0 + 0)
-    w_v[j,0] = -w_v[j,0] + 2*(B1*(1+beta*x_v_rad[j,0])*(x_v_rad[j,0]*z_v_rad[j,0]) + 0 + 0)
-
-
-             #------------| For Velocity Profiles  |---------------#
-# x=np.load('x_poiseullie.npy')
-# y=np.load('y_poiseullie.npy')
-# z=np.load('z_poiseullie.npy')
-# u=np.load('u_poiseullie.npy')
-# v=np.load('v_poiseullie.npy')
-# w=np.load('w_poiseullie.npy')
+    x_v_rad[j,0] = x_v[j,0]/mag_position_v
+    y_v_rad[j,0] = y_v[j,0]/mag_position_v
+    z_v_rad[j,0] = z_v[j,0]/mag_position_v
+    u_v[j,0] = u_v[j,0] + (B1*(1+beta*x_v_rad[j,0])*(x_v_rad[j,0]**2 - 1) + 0 + 0)
+    v_v[j,0] = v_v[j,0] + (B1*(1+beta*x_v_rad[j,0])*(x_v_rad[j,0]*y_v_rad[j,0]) + 0 + 0)
+    w_v[j,0] = w_v[j,0] + (B1*(1+beta*x_v_rad[j,0])*(x_v_rad[j,0]*z_v_rad[j,0]) + 0 + 0)
 
 grid_shift_x = h*np.random.rand(Niter,1)-h2
 grid_shift_y = h*np.random.rand(Niter,1)-h2
@@ -210,10 +205,7 @@ def anderson_thermostat(vel_cm, vel_rand, vel_si, locations, Num):
 #-------------------------------------------------------------------------------------------------------#
 #-------------------------------------------------------------------------------------------------------#
 #-------------------------------------------------------------------------------------------------------#
-# fig = plt.figure()
-# ax = fig.add_subplot(111, projection='3d')
-# ax.scatter(x,y,z)
-# plt.show()
+
 s_sim = time.time()
 for i in range(0,Niter):
     x = pos_stream(x,u,0,dt)
@@ -229,7 +221,7 @@ for i in range(0,Niter):
     
     #print('a')
     #--------------------------------| Squirmer BC |------------------------------------#
-    sq_in = np.nonzero((x**2+y**2+z**2)<(R1**2))
+    sq_in = np.nonzero((x**2+y**2+z**2)<=(R1**2))
     sq_in = np.asarray(sq_in)
     sq_in = np.delete(sq_in,1,axis=0).ravel()
     x[sq_in,0] = x[sq_in,0] - u[sq_in,0]*dt2
@@ -238,18 +230,21 @@ for i in range(0,Niter):
 
     mag_position = np.sqrt(x[sq_in,0]**2 + y[sq_in,0]**2 + z[sq_in,0]**2)
     
-    x[sq_in,0] = R1*x[sq_in,0]/mag_position
-    y[sq_in,0] = R1*y[sq_in,0]/mag_position
-    z[sq_in,0] = R1*z[sq_in,0]/mag_position
+    x[sq_in,0] = x[sq_in,0]/mag_position
+    y[sq_in,0] = y[sq_in,0]/mag_position
+    z[sq_in,0] = z[sq_in,0]/mag_position
 
     u[sq_in,0] = -u[sq_in,0] + 2*(B1*(1+beta*x[sq_in,0])*(x[sq_in,0]**2 - 1) + 0 + 0)
-    v[sq_in,0] = -v[sq_in,0] + 2*(B1*(1+beta*x[sq_in,0])*(y[sq_in,0]*x[sq_in,0]) + 0 + 0)
+    v[sq_in,0] = -v[sq_in,0] + 2*(B1*(1+beta*x[sq_in,0])*(x[sq_in,0]*y[sq_in,0]) + 0 + 0)
     w[sq_in,0] = -w[sq_in,0] + 2*(B1*(1+beta*x[sq_in,0])*(x[sq_in,0]*z[sq_in,0]) + 0 + 0)
+
+    x[sq_in,0] = R1*x[sq_in,0]
+    y[sq_in,0] = R1*y[sq_in,0]
+    z[sq_in,0] = R1*z[sq_in,0]
 
     x[sq_in,0] = x[sq_in,0] + u[sq_in,0]*dt2
     y[sq_in,0] = y[sq_in,0] + v[sq_in,0]*dt2
     z[sq_in,0] = z[sq_in,0] + w[sq_in,0]*dt2
-    
     #print('b')
 
     #--------------------------------| Periodic BC |------------------------------------#
@@ -312,21 +307,22 @@ for i in range(0,Niter):
     v_cm_r = cm_quantity(head, list_particle, count_f, v_r_at, nc_total)
     w_cm_r = cm_quantity(head, list_particle, count_f, w_r_at, nc_total)
 
-    u_si =cm_vel(u_cm_r, count, nc_total)
-    v_si =cm_vel(v_cm_r, count, nc_total)
-    w_si =cm_vel(w_cm_r, count, nc_total)
+    u_si = cm_vel(u_cm_r, count, nc_total)
+    v_si = cm_vel(v_cm_r, count, nc_total)
+    w_si = cm_vel(w_cm_r, count, nc_total)
 
     u = anderson_thermostat(u_cm, u_r_at, u_si, locations, N)
     v = anderson_thermostat(v_cm, v_r_at, v_si, locations, N)
     w = anderson_thermostat(w_cm, w_r_at, w_si, locations, N)
 
+    #if i>=n_avg_fp:
     in_x_fp = np.floor((x-x_min)/hcf)
     in_y_fp = np.floor((y-y_min)/hcf)
     in_z_fp = np.floor((z-z_min)/hcf)
     locations_fp = ncx_fp*ncy_fp*in_z_fp + ncx_fp*in_y_fp + in_x_fp
     locations_fp = locations_fp.astype(int)
     
-    head_fp, list_particle_fp, count_fp = head_list(locations, N, nct_profile)
+    head_fp, list_particle_fp, count_fp = head_list(locations_fp, N, nct_profile)
     head_fp = head_fp.astype(int)
     list_particle_fp = list_particle_fp.astype(int)
 
@@ -334,17 +330,28 @@ for i in range(0,Niter):
     v_cm_fp1 = cm_quantity(head_fp, list_particle_fp, count_fp, v, nct_profile)
     w_cm_fp1 = cm_quantity(head_fp, list_particle_fp, count_fp, w, nct_profile)
 
-    if i>=n_avg_fp:
-        u_cm_fp = u_cm_fp + u_cm_fp1
-        v_cm_fp = v_cm_fp + v_cm_fp1                        
-        w_cm_fp = w_cm_fp + w_cm_fp1
+    u_cm_fp2 = cm_vel(u_cm_fp1, count_fp, nct_profile)
+    v_cm_fp2 = cm_vel(v_cm_fp1, count_fp, nct_profile)
+    w_cm_fp2 = cm_vel(w_cm_fp1, count_fp, nct_profile)
 
-    if i%1000==1:
+    u_cm_fp = u_cm_fp + u_cm_fp2
+    v_cm_fp = v_cm_fp + v_cm_fp2                        
+    w_cm_fp = w_cm_fp + w_cm_fp2
+
+    if i%100==1:
         print("ITERATION - " + 	str(i))
 
-u_cm_fp = u_cm_fp/(Niter-n_avg_fp)
-v_cm_fp = v_cm_fp/(Niter-n_avg_fp)                       
-w_cm_fp = w_cm_fp/(Niter-n_avg_fp)
+u_cm_fp = u_cm_fp/Niter #(Niter-n_avg_fp)
+v_cm_fp = v_cm_fp/Niter #(Niter-n_avg_fp)                       
+w_cm_fp = w_cm_fp/Niter #(Niter-n_avg_fp)
+
+u_new = u_cm_fp.reshape(ncx_fp,ncy_fp,ncz_fp)
+v_new = v_cm_fp.reshape(ncx_fp,ncy_fp,ncz_fp)
+w_new = w_cm_fp.reshape(ncx_fp,ncy_fp,ncz_fp)
+
+u_new = u_new.transpose()
+v_new = v_new.transpose()
+w_new = w_new.transpose()
 
 e_sim = time.time()
 print(str(e_sim-s_sim))
